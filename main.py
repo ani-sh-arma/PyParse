@@ -4,6 +4,9 @@ import astpretty  # Install using: pip install astpretty
 import tkinter as tk
 from tkinter import scrolledtext, filedialog, ttk
 import time
+import tokenize
+import io
+from token import tok_name
 
 class SyntaxCheckerApp:
     def __init__(self, root):
@@ -47,6 +50,13 @@ class SyntaxCheckerApp:
         self.results_text = scrolledtext.ScrolledText(results_frame, wrap=tk.WORD, font=("Courier New", 10))
         self.results_text.pack(fill=tk.BOTH, expand=True)
 
+        # Tokens tab
+        tokens_frame = tk.Frame(self.notebook)
+        self.notebook.add(tokens_frame, text="Tokens")
+
+        self.tokens_text = scrolledtext.ScrolledText(tokens_frame, wrap=tk.WORD, font=("Courier New", 10))
+        self.tokens_text.pack(fill=tk.BOTH, expand=True)
+
         # AST tab
         ast_frame = tk.Frame(self.notebook)
         self.notebook.add(ast_frame, text="AST")
@@ -73,7 +83,7 @@ class SyntaxCheckerApp:
 
     def load_file(self, file_path):
         try:
-            with open(file_path, "r") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 code = f.read()
 
             self.code_text.delete(1.0, tk.END)
@@ -82,6 +92,34 @@ class SyntaxCheckerApp:
         except Exception as e:
             self.status_var.set(f"Error loading file: {str(e)}")
 
+    def tokenize_code(self, code):
+        """Tokenize the given code and return a list of tokens."""
+        tokens = []
+        try:
+            # Convert string to bytes for tokenize
+            code_bytes = io.BytesIO(code.encode('utf-8'))
+
+            # Tokenize the code
+            for tok in tokenize.tokenize(code_bytes.readline):
+                token_type = tok_name[tok.type]
+                token_string = tok.string
+                start_line, start_col = tok.start
+                end_line, end_col = tok.end
+                line = tok.line
+
+                tokens.append({
+                    'type': token_type,
+                    'string': token_string,
+                    'start': (start_line, start_col),
+                    'end': (end_line, end_col),
+                    'line': line
+                })
+
+        except Exception as e:
+            tokens.append({'error': str(e)})
+
+        return tokens
+
     def check_syntax(self):
         file_path = self.file_entry.get()
         if not file_path:
@@ -89,10 +127,8 @@ class SyntaxCheckerApp:
             return
 
         self.results_text.delete(1.0, tk.END)
+        self.tokens_text.delete(1.0, tk.END)
         self.ast_text.delete(1.0, tk.END)
-
-        # Switch to results tab
-        self.notebook.select(1)
 
         # Reset progress bar
         self.progress["value"] = 0
@@ -101,37 +137,66 @@ class SyntaxCheckerApp:
         try:
             # Update status
             self.status_var.set("Reading file...")
-            self.progress["value"] = 20
+            self.progress["value"] = 10
             self.root.update()
-            time.sleep(0.5)  # Simulate processing time
+            time.sleep(0.3)  # Simulate processing time
 
-            with open(file_path, "r") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 code = f.read()
+
+            # Update status for tokenization
+            self.status_var.set("Tokenizing code...")
+            self.progress["value"] = 30
+            self.root.update()
+            time.sleep(0.3)  # Simulate processing time
+
+            # Tokenize the code
+            tokens = self.tokenize_code(code)
+
+            # Display tokens
+            self.tokens_text.insert(tk.END, "TOKENS:\n")
+            self.tokens_text.insert(tk.END, "=" * 80 + "\n\n")
+
+            for token in tokens:
+                if 'error' in token:
+                    self.tokens_text.insert(tk.END, f"Error during tokenization: {token['error']}\n")
+                    continue
+
+                token_info = (
+                    f"Type: {token['type']}\n"
+                    f"String: {repr(token['string'])}\n"
+                    f"Location: Line {token['start'][0]}, Column {token['start'][1]} to "
+                    f"Line {token['end'][0]}, Column {token['end'][1]}\n"
+                    f"Line: {repr(token['line'])}\n"
+                    f"{'-' * 40}\n"
+                )
+                self.tokens_text.insert(tk.END, token_info)
 
             # Update status
             self.status_var.set("Parsing code...")
-            self.progress["value"] = 40
+            self.progress["value"] = 50
             self.root.update()
-            time.sleep(0.5)  # Simulate processing time
+            time.sleep(0.3)  # Simulate processing time
 
             # Parse the code
             tree = ast.parse(code)
 
             # Update status
             self.status_var.set("Generating AST visualization...")
-            self.progress["value"] = 60
+            self.progress["value"] = 70
             self.root.update()
-            time.sleep(0.5)  # Simulate processing time
+            time.sleep(0.3)  # Simulate processing time
 
             # Display success message
             self.results_text.insert(tk.END, f"✅ No syntax errors found in '{file_path}'.\n\n")
+            self.results_text.insert(tk.END, "🔍 Tokenization completed successfully. See the Tokens tab.\n\n")
             self.results_text.insert(tk.END, "🔍 Abstract Syntax Tree (AST) visualization has been generated in the AST tab.\n")
 
             # Update status
             self.status_var.set("Formatting AST...")
-            self.progress["value"] = 80
+            self.progress["value"] = 90
             self.root.update()
-            time.sleep(0.5)  # Simulate processing time
+            time.sleep(0.3)  # Simulate processing time
 
             # Capture AST pretty print output
             import io
@@ -145,6 +210,9 @@ class SyntaxCheckerApp:
 
             # Display AST
             self.ast_text.insert(tk.END, ast_output)
+
+            # Switch to tokens tab to show the tokenization results
+            self.notebook.select(2)  # Index 2 is the Tokens tab
 
             # Complete progress
             self.progress["value"] = 100
